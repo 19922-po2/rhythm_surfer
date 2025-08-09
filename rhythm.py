@@ -106,9 +106,48 @@ def is_white(color, tolerance=10):
     r, g, b = color
     return r >= (255 - tolerance) and g >= (255 - tolerance) and b >= (255 - tolerance)
 
+def is_yellow(color, tolerance=50):
+    """
+    Check if a color is yellow or yellowish (including faded yellow).
+    Yellow has high red and green components, low blue.
+    
+    Args:
+        color (tuple): RGB color tuple
+        tolerance (int): Tolerance for yellow detection (higher to catch faded yellow)
+        
+    Returns:
+        bool: True if color is yellow-ish
+    """
+    r, g, b = color
+    # Yellow characteristics: high red, high green, low blue
+    # More tolerant to catch faded yellows
+    return (r >= (200 - tolerance) and 
+            g >= (200 - tolerance) and 
+            b <= (100 + tolerance) and
+            r > b and g > b)  # Ensure red and green are higher than blue
+
+def get_color_type(color):
+    """
+    Determine the type of color for note handling.
+    
+    Args:
+        color (tuple): RGB color tuple
+        
+    Returns:
+        str: 'white', 'yellow', or 'other'
+    """
+    if is_white(color):
+        return 'white'
+    elif is_yellow(color):
+        return 'yellow'
+    else:
+        return 'other'
+
 def monitor_rhythm_game():
     """
-    Monitor the rhythm game coordinates and press keys when pixels are not white.
+    Monitor the rhythm game coordinates and handle different note types:
+    - Yellow notes: Hold key until no longer yellow (including faded yellow)
+    - Other non-white notes: Quick press
     """
     # Coordinate and key mapping from comments
     coords_map = {
@@ -123,10 +162,17 @@ def monitor_rhythm_game():
     last_press_time = {}
     cooldown_ms = 50  # 50ms cooldown between presses for same key
     
+    # Track which keys are currently being held for yellow notes
+    keys_being_held = {}
+    yellow_note_active = {}  # Track if a yellow note is currently active
+    
     for coord in coords_map.keys():
         last_press_time[coord] = 0
+        keys_being_held[coord] = False
+        yellow_note_active[coord] = False
     
     print("Starting rhythm game monitor...")
+    print("Yellow notes = Hold until no longer yellow, Other notes = Quick press")
     print("Press Ctrl+C to stop")
     
     try:
@@ -136,34 +182,64 @@ def monitor_rhythm_game():
             all_colors = get_all_pixel_colors_fast(coords_list)
             current_time = time.time() * 1000  # Convert to milliseconds
             
-            # Collect all keys that need to be pressed simultaneously
-            keys_to_press = []
+            # Collect keys for quick presses (non-yellow notes)
+            keys_to_press_quick = []
             
             for coord, key in coords_map.items():
                 current_color = all_colors[coord]
+                color_type = get_color_type(current_color)
                 
-                # Check if key should be pressed (not white and cooldown passed)
-                if not is_white(current_color):
-                    if current_time - last_press_time[coord] > cooldown_ms:
-                        keys_to_press.append((coord, key))
-                        last_press_time[coord] = current_time
+                if color_type == 'yellow':
+                    # Yellow note detected
+                    if not keys_being_held[coord]:
+                        # Start holding the key for yellow note
+                        print(f"Yellow note detected at {coord}: {current_color} - Holding '{key}'")
+                        keyboard.press(key)
+                        keys_being_held[coord] = True
+                        yellow_note_active[coord] = True
+                    # Continue holding while yellow (including faded yellow)
+                    
+                elif yellow_note_active[coord] and color_type != 'yellow':
+                    # Yellow note ended (no longer yellow)
+                    if keys_being_held[coord]:
+                        print(f"Yellow note ended at {coord}: {current_color} - Releasing '{key}'")
+                        keyboard.release(key)
+                        keys_being_held[coord] = False
+                        yellow_note_active[coord] = False
+                        
+                elif color_type == 'other':
+                    # Regular note (non-white, non-yellow)
+                    if not keys_being_held[coord]:  # Only if not holding a yellow note
+                        if current_time - last_press_time[coord] > cooldown_ms:
+                            keys_to_press_quick.append((coord, key))
+                            last_press_time[coord] = current_time
+                
+                # If color becomes white and we were holding a yellow note, release it
+                elif color_type == 'white' and keys_being_held[coord]:
+                    print(f"Note ended (white) at {coord}: {current_color} - Releasing '{key}'")
+                    keyboard.release(key)
+                    keys_being_held[coord] = False
+                    yellow_note_active[coord] = False
             
-            # Press all keys simultaneously if any were detected
-            if keys_to_press:
-                coords_detected = [coord for coord, key in keys_to_press]
-                keys_detected = [key for coord, key in keys_to_press]
+            # Press all non-yellow keys simultaneously if any were detected
+            if keys_to_press_quick:
+                coords_detected = [coord for coord, key in keys_to_press_quick]
+                keys_detected = [key for coord, key in keys_to_press_quick]
                 
-                print(f"Non-white colors detected at {coords_detected}")
-                
-                # Press all keys at the same time
+                #print(f"Regular notes detected at {coords_detected}")
                 press_keys_simultaneously(keys_detected)
-                
-                print(f"Pressed keys simultaneously: {keys_detected}")
+                #print(f"Quick pressed keys: {keys_detected}")
             
             # No delay for maximum speed and responsiveness
             
     except KeyboardInterrupt:
-        print("\nMonitoring stopped by user")
+        # Release any keys that are still being held
+        print("\nReleasing any held keys...")
+        for coord, key in coords_map.items():
+            if keys_being_held[coord]:
+                keyboard.release(key)
+                print(f"Released '{key}'")
+        print("Monitoring stopped by user")
 
 def test_pixel_colors():
     """
@@ -181,8 +257,8 @@ def test_pixel_colors():
     for coord, key in coords_map.items():
         x, y = coord
         color = get_pixel_color_fast(x, y)
-        is_white_color = is_white(color)
-        print(f"({x}, {y}) -> Key '{key}': RGB{color} - {'WHITE' if is_white_color else 'NOT WHITE'}")
+        color_type = get_color_type(color)
+        print(f"({x}, {y}) -> Key '{key}': RGB{color} - {color_type.upper()}")
     print()
 
 if __name__ == "__main__":
