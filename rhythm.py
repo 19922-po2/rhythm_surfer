@@ -142,6 +142,19 @@ def get_color_type(color):
         return 'yellow'
     else:
         return 'other'
+    
+def pixel_above_is_no_longer_yellow(coord):
+    x, y = coord
+    # Check the pixel directly above the current coordinate
+    above_color = get_pixel_color_fast(x, y - 80)
+    #print(f"Checking above pixel at ({x}, {y - 80}): {above_color}")
+    #return not is_yellow(above_color, tolerance=30)
+    r, g, b = above_color
+    # Yellow characteristics: high red, high green, low blue
+    # More tolerant to catch faded yellows
+    return (r <= (200) and 
+            g <= (200) and 
+            b <= (200) )
 
 def monitor_rhythm_game():
     """
@@ -199,7 +212,9 @@ def monitor_rhythm_game():
                         yellow_note_active[coord] = True
                     # Continue holding while yellow (including faded yellow)
                     
-                elif yellow_note_active[coord] and color_type != 'yellow':
+                # elif yellow_note_active[coord] and color_type != 'yellow':
+                elif yellow_note_active[coord] and pixel_above_is_no_longer_yellow(coord):
+                    print("->", current_color)
                     # Yellow note ended (no longer yellow)
                     if keys_being_held[coord]:
                         print(f"Yellow note ended at {coord}: {current_color} - Releasing '{key}'")
@@ -215,11 +230,11 @@ def monitor_rhythm_game():
                             last_press_time[coord] = current_time
                 
                 # If color becomes white and we were holding a yellow note, release it
-                elif color_type == 'white' and keys_being_held[coord]:
-                    print(f"Note ended (white) at {coord}: {current_color} - Releasing '{key}'")
-                    keyboard.release(key)
-                    keys_being_held[coord] = False
-                    yellow_note_active[coord] = False
+                #elif color_type == 'white' and keys_being_held[coord]:
+                    #print(f"Note ended (white) at {coord}: {current_color} - Releasing '{key}'")
+                    #keyboard.release(key)
+                    #keys_being_held[coord] = False
+                    #yellow_note_active[coord] = False
             
             # Press all non-yellow keys simultaneously if any were detected
             if keys_to_press_quick:
@@ -262,8 +277,9 @@ def test_pixel_colors():
     print()
 
 if __name__ == "__main__":
+    monitor_rhythm_game()
     # Choose what to run:
-    print("Rhythm Game Bot")
+"""     print("Rhythm Game Bot")
     print("1. Test pixel colors at coordinates")
     print("2. Start monitoring and auto-play")
     print("3. Manual key test")
@@ -288,7 +304,7 @@ if __name__ == "__main__":
         
     else:
         print("Invalid choice!")
-
+ """
 
 #python rhythm.py
 #python -m mouseinfo
